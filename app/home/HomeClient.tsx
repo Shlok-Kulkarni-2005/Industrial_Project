@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Menu, Edit, Bell, Filter, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import Sidebar from "../../components/sidebar";
@@ -12,8 +12,9 @@ export default function HomeClient({
   username: string | null;
 }) {
   console.log("Sidebar username prop:", username); // Debug log
-  const [alertCount] = useState<number>(2);
+  const [alertCount, setAlertCount] = useState<number>(0);
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
   const router = useRouter();
 
   const handleMenuClick = (): void => {
@@ -43,6 +44,36 @@ export default function HomeClient({
     router.push("/updatedetailsop");
     console.log("Update Details clicked");
   };
+
+  // Fetch alert count
+  const fetchAlertCount = async () => {
+    try {
+      const response = await fetch('/api/alerts?limit=1');
+      if (response.ok) {
+        const data = await response.json();
+        // Count alerts from the last 24 hours
+        const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const recentAlerts = data.alerts.filter((alert: any) => 
+          new Date(alert.createdAt) > twentyFourHoursAgo
+        );
+        setAlertCount(recentAlerts.length);
+      }
+    } catch (error) {
+      console.error('Error fetching alert count:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch alerts on component mount and set up auto-refresh
+  useEffect(() => {
+    fetchAlertCount();
+    
+    // Set up auto-refresh every 30 seconds
+    const interval = setInterval(fetchAlertCount, 30000);
+    
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -113,7 +144,7 @@ export default function HomeClient({
               <div className="w-10 h-10 md:w-12 md:h-12 bg-blue-50 rounded-full flex items-center justify-center relative">
                 <Bell className="w-5 h-5 md:w-6 md:h-6 text-blue-600" />
                 {alertCount > 0 && (
-                  <div className="absolute -top-1 -right-1 w-4 h-4 md:w-5 md:h-5 bg-red-500 rounded-full flex items-center justify-center">
+                  <div className="absolute -top-1 -right-1 w-4 h-4 md:w-5 md:h-5 bg-red-500 rounded-full flex items-center justify-center animate-pulse">
                     <span className="text-white text-[10px] md:text-xs font-medium">
                       {alertCount}
                     </span>

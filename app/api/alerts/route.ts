@@ -1,26 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '../../../lib/prisma';
 
-export interface Alert {
-  id: number;
-  title: string;
-  message: string;
-  type: 'system' | 'job' | 'manager';
-  timestamp: string;
-}
-
-// In-memory alerts store
-let alerts: Alert[] = [
-  { id: 1, title: 'Maintenance', message: 'Machine Cutting MC/1 requires maintenance', type: 'system', timestamp: new Date().toISOString() },
-  { id: 2, title: 'Job Complete', message: 'Job #1 completed', type: 'job', timestamp: new Date().toISOString() },
-];
-let alertIdCounter = 3;
-
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    // Return alerts sorted by timestamp (descending)
-    const sortedAlerts = alerts.slice().sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    return NextResponse.json({ alerts: sortedAlerts }, { status: 200 });
+    const { searchParams } = new URL(req.url);
+    const type = searchParams.get('type');
+    const limit = searchParams.get('limit');
+
+    const where: any = {};
+    if (type) {
+      where.type = type;
+    }
+
+    const alerts = await prisma.alert.findMany({
+      where,
+      include: {
+        sentByUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit ? parseInt(limit) : undefined
+    });
+
+    return NextResponse.json({ alerts }, { status: 200 });
   } catch (error) {
+    console.error('Error fetching alerts:', error);
     return NextResponse.json({ error: 'Failed to fetch alerts' }, { status: 500 });
   }
 }
@@ -28,20 +37,47 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { title, message, timestamp } = body;
-    if (!title || !message || !timestamp) {
+    const { title, message, type = 'MANAGER', sentBy } = body;
+    
+    if (!title || !message) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
-    const alert: Alert = {
-      id: alertIdCounter++,
+
+    const alertData: any = {
       title,
       message,
-      type: 'manager',
-      timestamp,
+      type: type.toUpperCase()
     };
-    alerts.push(alert);
+
+    // If sentBy is provided, validate the user exists
+    if (sentBy) {
+      const user = await prisma.user.findUnique({
+        where: { id: parseInt(sentBy) }
+      });
+
+      if (!user) {
+        return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      }
+
+      alertData.sentBy = parseInt(sentBy);
+    }
+
+    const alert = await prisma.alert.create({
+      data: alertData,
+      include: {
+        sentByUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
     return NextResponse.json({ alert }, { status: 201 });
   } catch (error) {
+    console.error('Error creating alert:', error);
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   }
 } 

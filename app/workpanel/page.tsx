@@ -1,21 +1,39 @@
 "use client";
-import React, { useState } from "react";
-import { Menu, ChevronDown, X } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Menu, ChevronDown, X, Loader2, AlertCircle, RefreshCw } from "lucide-react";
 import Sidebar from "../../components/sidebarm";
 
 // Type definitions
 interface Machine {
   id: number;
   name: string;
-  status: "ON" | "OFF";
-  statusColor: string;
+  status: string;
+  location?: string;
+  description?: string;
 }
 
-interface Product {
-  id: string;
-  name: string;
-  operation: string;
-  date: string;
+interface Job {
+  id: number;
+  machine: {
+    id: number;
+    name: string;
+    status: string;
+  };
+  product: {
+    id: number;
+    name: string;
+    description?: string;
+  };
+  operator?: {
+    id: number;
+    username?: string;
+    phone: string;
+  };
+  quantity: number;
+  status: string;
+  stage: string;
+  createdAt: string;
+  totalCost: number;
 }
 
 type ViewType = "machine" | "product" | "details";
@@ -31,53 +49,138 @@ interface CustomDropdownProps {
 export default function WorkPanelInterface() {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [currentView, setCurrentView] = useState<ViewType>("machine");
-  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [selectedFilter, setSelectedFilter] =
-    useState<FilterType>("Machine/Process No");
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [selectedFilter, setSelectedFilter] = useState<FilterType>("Machine/Process No");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string>("");
+  
+  // Data state
+  const [machines, setMachines] = useState<Machine[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
 
   const filterOptions: FilterType[] = ["Machine/Process No", "Product Type"];
 
-  // Machine/Process data
-  const machineData: Machine[] = [
-    { id: 1, name: "Cutting MC/1", status: "ON", statusColor: "green" },
-    { id: 2, name: "Milling 1", status: "OFF", statusColor: "gray" },
-    { id: 3, name: "Milling 2", status: "ON", statusColor: "green" },
-    { id: 4, name: "Drilling", status: "OFF", statusColor: "gray" },
-    { id: 5, name: "CNC Finish", status: "ON", statusColor: "green" },
-  ];
+  // Fetch data on component mount
+  useEffect(() => {
+    fetchData();
+  }, []);
 
-  // Product data
-  const productData: Product[] = [
-    { id: "A", name: "Product A", operation: "Milling", date: "15/06/2025" },
-    { id: "B", name: "Product B", operation: "Cutting", date: "14/06/2025" },
-    { id: "C", name: "Product C", operation: "Drilling", date: "13/06/2025" },
-    { id: "D", name: "Product D", operation: "Milling", date: "12/06/2025" },
-    { id: "E", name: "Product E", operation: "Finishing", date: "11/06/2025" },
-  ];
+  // Auto-refresh data every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!loading && !refreshing) {
+        fetchData(true); // Silent refresh
+      }
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
+  }, [loading, refreshing]);
+
+  const fetchData = async (silent = false) => {
+    try {
+      if (!silent) {
+        setLoading(true);
+      } else {
+        setRefreshing(true);
+      }
+      
+      // Fetch machines
+      const machinesResponse = await fetch('/api/machines');
+      if (!machinesResponse.ok) {
+        throw new Error('Failed to fetch machines');
+      }
+      const machinesData = await machinesResponse.json();
+      setMachines(machinesData.machines);
+
+      // Fetch jobs
+      const jobsResponse = await fetch('/api/jobs');
+      if (!jobsResponse.ok) {
+        throw new Error('Failed to fetch jobs');
+      }
+      const jobsData = await jobsResponse.json();
+      setJobs(jobsData.jobs);
+      
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      if (!silent) {
+        setError('Failed to load data. Please refresh the page.');
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const handleRefresh = () => {
+    fetchData();
+  };
 
   const handleMenuClick = (): void => {
     setSidebarOpen(true);
   };
 
-  const getStatusColor = (status: Machine["status"]): string => {
+  const getStatusColor = (status: string): string => {
     switch (status) {
       case "ON":
         return "text-green-600";
       case "OFF":
         return "text-gray-500";
+      case "MAINTENANCE":
+        return "text-orange-600";
+      case "IDLE":
+        return "text-yellow-600";
       default:
         return "text-gray-500";
     }
   };
 
-  const getStatusDotColor = (status: Machine["status"]): string => {
+  const getStatusDotColor = (status: string): string => {
     switch (status) {
       case "ON":
         return "bg-green-500";
       case "OFF":
         return "bg-gray-400";
+      case "MAINTENANCE":
+        return "bg-orange-500";
+      case "IDLE":
+        return "bg-yellow-500";
       default:
         return "bg-gray-400";
+    }
+  };
+
+  const getJobStatusColor = (status: string): string => {
+    switch (status) {
+      case 'PENDING':
+        return 'bg-yellow-500';
+      case 'IN_PROGRESS':
+        return 'bg-blue-500';
+      case 'FINISHED':
+        return 'bg-green-500';
+      case 'DISPATCHED':
+        return 'bg-purple-500';
+      case 'COMPLETED':
+        return 'bg-green-600';
+      default:
+        return 'bg-gray-400';
+    }
+  };
+
+  const getJobStatusText = (status: string): string => {
+    switch (status) {
+      case 'PENDING':
+        return 'Pending';
+      case 'IN_PROGRESS':
+        return 'In Progress';
+      case 'FINISHED':
+        return 'Finished';
+      case 'DISPATCHED':
+        return 'Dispatched';
+      case 'COMPLETED':
+        return 'Completed';
+      default:
+        return status;
     }
   };
 
@@ -85,14 +188,30 @@ export default function WorkPanelInterface() {
     console.log("Machine clicked:", machine);
   };
 
-  const handleSeeDetails = (product: Product): void => {
-    setSelectedProduct(product);
+  const handleSeeDetails = (job: Job): void => {
+    setSelectedJob(job);
     setCurrentView("details");
   };
 
   const handleClose = (): void => {
     setCurrentView(selectedFilter === "Product Type" ? "product" : "machine");
-    setSelectedProduct(null);
+    setSelectedJob(null);
+  };
+
+  const formatDate = (dateString: string): string => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+  };
+
+  const formatCurrency = (amount: number): string => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(amount);
   };
 
   const CustomDropdown = ({
@@ -142,9 +261,20 @@ export default function WorkPanelInterface() {
     );
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-4" />
+          <p className="text-gray-600">Loading work panel...</p>
+        </div>
+      </div>
+    );
+  }
+
   const renderMachineView = () => (
     <div className="space-y-4">
-      {machineData.map((machine) => (
+      {machines.map((machine) => (
         <button
           key={machine.id}
           onClick={() => handleMachineClick(machine)}
@@ -169,6 +299,11 @@ export default function WorkPanelInterface() {
               >
                 {machine.status}
               </p>
+              {machine.location && (
+                <p className="text-sm text-gray-500 mt-1">
+                  Location: {machine.location}
+                </p>
+              )}
             </div>
           </div>
         </button>
@@ -180,7 +315,7 @@ export default function WorkPanelInterface() {
         <div className="grid grid-cols-2 gap-8">
           <div className="text-center">
             <div className="text-4xl font-bold text-green-600 mb-2">
-              {machineData.filter((m) => m.status === "ON").length}
+              {machines.filter((m) => m.status === "ON").length}
             </div>
             <div className="text-sm text-gray-600 flex items-center justify-center">
               <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
@@ -189,7 +324,7 @@ export default function WorkPanelInterface() {
           </div>
           <div className="text-center">
             <div className="text-4xl font-bold text-gray-500 mb-2">
-              {machineData.filter((m) => m.status === "OFF").length}
+              {machines.filter((m) => m.status === "OFF").length}
             </div>
             <div className="text-sm text-gray-600 flex items-center justify-center">
               <div className="w-2 h-2 bg-gray-400 rounded-full mr-2"></div>
@@ -203,23 +338,25 @@ export default function WorkPanelInterface() {
 
   const renderProductView = () => (
     <div className="space-y-4">
-      {productData.map((product) => (
+      {jobs.map((job) => (
         <div
-          key={product.id}
+          key={job.id}
           className="bg-white rounded-lg p-4 shadow-sm border border-gray-200"
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+              <div className={`w-3 h-3 rounded-full ${getJobStatusColor(job.status)}`}></div>
               <div>
                 <h3 className="text-gray-900 font-medium text-base mb-1">
-                  {product.name}
+                  {job.product.name}
                 </h3>
-                <p className="text-sm text-gray-500">On: {product.operation}</p>
+                <p className="text-sm text-gray-500">Machine: {job.machine.name}</p>
+                <p className="text-sm text-gray-500">Quantity: {job.quantity}</p>
+                <p className="text-sm text-gray-500">Status: {getJobStatusText(job.status)}</p>
               </div>
             </div>
             <button
-              onClick={() => handleSeeDetails(product)}
+              onClick={() => handleSeeDetails(job)}
               className="px-4 py-2 bg-black text-white text-sm rounded-md hover:bg-gray-800 transition-colors"
             >
               See Details
@@ -227,6 +364,20 @@ export default function WorkPanelInterface() {
           </div>
         </div>
       ))}
+
+      {jobs.length === 0 && (
+        <div className="text-center py-12">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-gray-400 text-2xl">📦</span>
+          </div>
+          <h3 className="text-gray-500 font-medium mb-2">
+            No jobs found
+          </h3>
+          <p className="text-gray-400 text-sm">
+            Add jobs to see them listed here
+          </p>
+        </div>
+      )}
     </div>
   );
 
@@ -234,9 +385,9 @@ export default function WorkPanelInterface() {
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-4">
-          <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+          <div className={`w-3 h-3 rounded-full ${getJobStatusColor(selectedJob?.status || '')}`}></div>
           <h1 className="text-2xl font-bold text-gray-900">
-            {selectedProduct?.name}
+            {selectedJob?.product.name}
           </h1>
         </div>
         <button
@@ -251,17 +402,26 @@ export default function WorkPanelInterface() {
       <div className="space-y-6">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Date : DD/MM/YY
+            Created Date
           </label>
-          <div className="text-gray-900 text-lg">{selectedProduct?.date}</div>
+          <div className="text-gray-900 text-lg">{selectedJob && formatDate(selectedJob.createdAt)}</div>
         </div>
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Operation
+            Machine
           </label>
           <div className="text-gray-900 text-lg">
-            {selectedProduct?.operation}
+            {selectedJob?.machine.name} ({selectedJob?.machine.status})
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Quantity
+          </label>
+          <div className="text-gray-900 text-lg">
+            {selectedJob?.quantity} units
           </div>
         </div>
 
@@ -270,18 +430,38 @@ export default function WorkPanelInterface() {
             Status
           </label>
           <div className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-green-100 text-green-800">
-            Active
+            {selectedJob && getJobStatusText(selectedJob.status)}
           </div>
         </div>
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Machine Assignment
+            Stage
           </label>
           <div className="text-gray-900 text-lg">
-            Machine #{selectedProduct?.id}
+            {selectedJob?.stage}
           </div>
         </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Total Cost
+          </label>
+          <div className="text-gray-900 text-lg">
+            {selectedJob && formatCurrency(selectedJob.totalCost)}
+          </div>
+        </div>
+
+        {selectedJob?.operator && (
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Assigned Operator
+            </label>
+            <div className="text-gray-900 text-lg">
+              {selectedJob.operator.username || selectedJob.operator.phone}
+            </div>
+          </div>
+        )}
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -290,10 +470,20 @@ export default function WorkPanelInterface() {
           <div className="w-full bg-gray-200 rounded-full h-3">
             <div
               className="bg-blue-600 h-3 rounded-full"
-              style={{ width: "75%" }}
+              style={{ 
+                width: selectedJob?.status === 'COMPLETED' ? '100%' : 
+                       selectedJob?.status === 'FINISHED' ? '90%' :
+                       selectedJob?.status === 'IN_PROGRESS' ? '60%' :
+                       selectedJob?.status === 'PENDING' ? '20%' : '10%'
+              }}
             ></div>
           </div>
-          <div className="text-sm text-gray-600 mt-2">75% Complete</div>
+          <div className="text-sm text-gray-600 mt-2">
+            {selectedJob?.status === 'COMPLETED' ? '100% Complete' :
+             selectedJob?.status === 'FINISHED' ? '90% Complete' :
+             selectedJob?.status === 'IN_PROGRESS' ? '60% Complete' :
+             selectedJob?.status === 'PENDING' ? '20% Complete' : '10% Complete'}
+          </div>
         </div>
       </div>
     </div>
@@ -321,14 +511,44 @@ export default function WorkPanelInterface() {
 
         <h1 className="text-xl font-semibold text-blue-700">Work Panel</h1>
 
-        <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
-          <span className="text-white font-medium text-lg">A</span>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+            title="Refresh data"
+          >
+            <RefreshCw className={`w-5 h-5 text-blue-700 ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
+          <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+            <span className="text-white font-medium text-lg">A</span>
+          </div>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="px-6 py-8">
         <div className="max-w-2xl mx-auto">
+          {/* Error Message */}
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+              <div className="flex items-center">
+                <AlertCircle className="w-5 h-5 text-red-600 mr-2" />
+                <span className="text-red-800">{error}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Auto-refresh indicator */}
+          {refreshing && (
+            <div className="mb-4 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center justify-center text-blue-700 text-sm">
+                <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                Refreshing data...
+              </div>
+            </div>
+          )}
+
           <CustomDropdown
             label="Select By"
             value={selectedFilter}

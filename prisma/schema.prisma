@@ -9,8 +9,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 model User {
@@ -18,26 +18,30 @@ model User {
   email     String   @unique
   password  String
   name      String
+  role      String   @default("manager") // manager, operator
   createdAt DateTime @default(now())
-  // ... other fields
+  updatedAt DateTime @updatedAt
+  otps      OTP[]
+  passwordResetTokens PasswordResetToken[]
+  sentAlerts Alert[]  // Alerts sent by this user
 }
 
 model OTP {
   id Int @id @default(autoincrement())
-
   userId    Int
   code      String
   expiresAt DateTime
   used      Boolean  @default(false)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model PasswordResetToken {
   id Int @id @default(autoincrement())
-
   userId    Int
   token     String   @unique
   expiresAt DateTime
   used      Boolean  @default(false)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Operator {
@@ -46,14 +50,93 @@ model Operator {
   username     String?
   profileImage String?
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
   otps         OperatorOTP[]
+  jobs         Job[]    // Jobs assigned to this operator
 }
 
 model OperatorOTP {
   id         Int       @id @default(autoincrement())
-  operator   Operator  @relation(fields: [operatorId], references: [id])
+  operator   Operator  @relation(fields: [operatorId], references: [id], onDelete: Cascade)
   operatorId Int
   code       String
   expiresAt  DateTime
   used       Boolean   @default(false)
+}
+
+model Machine {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  status      String   @default("OFF") // ON, OFF, MAINTENANCE, IDLE
+  location    String?
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  jobs        Job[]
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  costPerUnit Decimal  @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  jobs        Job[]
+}
+
+model Job {
+  id          Int      @id @default(autoincrement())
+  machineId   Int
+  productId   Int
+  operatorId  Int?
+  quantity    Int
+  status      String   @default("PENDING") // PENDING, IN_PROGRESS, FINISHED, DISPATCHED, COMPLETED
+  stage       String   @default("INITIAL") // INITIAL, PROCESSING, FINISHED, DISPATCHED
+  costPerUnit Decimal  @default(0)
+  totalCost   Decimal  @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  dispatchedAt DateTime?
+  
+  machine     Machine  @relation(fields: [machineId], references: [id])
+  product     Product  @relation(fields: [productId], references: [id])
+  operator    Operator? @relation(fields: [operatorId], references: [id])
+  
+  checklistItems JobChecklistItem[]
+  dispatches     Dispatch[]
+}
+
+model JobChecklistItem {
+  id          Int      @id @default(autoincrement())
+  jobId       Int
+  label       String
+  checked     Boolean  @default(false)
+  required    Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+model Alert {
+  id        Int      @id @default(autoincrement())
+  title     String
+  message   String
+  type      String   @default("SYSTEM") // SYSTEM, JOB, MANAGER
+  sentBy    Int?     // User ID who sent the alert
+  createdAt DateTime @default(now())
+  
+  sentByUser User?   @relation(fields: [sentBy], references: [id])
+}
+
+model Dispatch {
+  id          Int      @id @default(autoincrement())
+  jobId       Int
+  quantity    Int
+  cost        Decimal  @default(0)
+  dispatchedAt DateTime @default(now())
+  
+  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
 }
